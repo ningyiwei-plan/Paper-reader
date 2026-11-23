@@ -134,6 +134,7 @@ function createReaderMarks(storageKey, announce, onJudgment) {
     window.getSelection().removeAllRanges();
     hide();
     paint(key);
+    document.dispatchEvent(new Event("reader-marks-change"));
     try {
       localStorage.setItem(storageName, JSON.stringify(marks));
     } catch {

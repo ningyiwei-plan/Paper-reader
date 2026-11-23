@@ -1,35 +1,52 @@
-# Paper Reader
+<div align="center">
+  <h1>📖 Paper Reader</h1>
+  <p><strong>把论文 PDF 变成一份可搜索、可批注的双语精读 HTML</strong></p>
+  <p>原文与中文译文对照 · 原版图表 · 离线阅读</p>
+</div>
 
-把论文 PDF 做成一个可离线打开的中文精读页面。左侧展示原文与译文，右侧提供释义和笔记。
+![Paper Reader v5 示例。界面显示 GroupAssistBench 原文与译文，青色标出搜索命中词，释义和笔记与中文译文并排。](docs/reader-preview.jpg)
 
-## 功能
+*GroupAssistBench 精读示例。搜索命中同时显示在译文和示例笔记摘录中。*
 
-- 从目录跳转到章节，放大原版图表，按页码回查 PDF。
-- 离线搜索原文、译文、释义和笔记。可组合章节与内容类型，快速定位图表、附录或做过笔记的段落。
-- 选中文字即可高亮、加粗或「记下判断」。判断笔记自动带入引文、章节、页码和段落链接，可补充其他解释及需要核实的证据。
-- 切换纸本、清透和夜读三种外观。笔记、判断、标记和外观可以一起导出到单个 HTML。
-- 正文默认逐段对照，附录默认提供提要。可针对指定附录做完整翻译。
+## 能做什么
 
-## 在 Agent 中使用
+| | 功能 | 读起来是什么样 |
+| --- | --- | --- |
+| 📖 | **双语对照** | 保留原文、页码和高清图表。释义与笔记放在中文译文右侧，窄屏按顺序排列。 |
+| 🔎 | **搜索与筛选** | 高亮原文、译文、释义和笔记里的命中词，可按章节、图表、附录或有笔记的段落筛选。 |
+| 📝 | **批注与判断** | 选中文字即可高亮、加粗或记下带出处的判断。可补充其他解释与待核实的证据。 |
+| 🎨 | **离线阅读** | 支持纸本、清透和夜读三种外观。可导出含笔记与标记的单个 HTML。 |
 
-克隆或下载此仓库，把完整目录作为 Skill 使用。GitHub 仓库名为 `paper-reader`，Skill 名为 `paper-reading-html`。
+## 快速开始
 
-- **Codex**。让 Codex 读取仓库中的 [SKILL.md](SKILL.md)，并提供论文 PDF。
-- **DeepSeek Harness**。将完整目录放在项目的 `.dsh/skills/paper-reading-html/`，再在会话中指定该 Skill。参见[迁移说明](references/portability.md)。
+下载仓库并保留完整目录。仓库名为 `paper-reader`，Skill 名为 `paper-reading-html`。
 
-> 使用 paper-reading-html 处理这篇 PDF。正文逐段翻译，附录给提要，附录 F 逐段精读。
+| Agent | 使用方式 |
+| --- | --- |
+| **Codex** | 提供论文 PDF，并让 Codex 按 [SKILL.md](SKILL.md) 生成精读 HTML。 |
+| **DeepSeek Harness** | 把完整目录放到项目的 `.dsh/skills/paper-reading-html/`，在会话中指定该 Skill。更多安装位置见[迁移说明](references/portability.md)。 |
 
-## 从命令行生成
+> 用 paper-reading-html 处理这篇 PDF。正文逐段对照，附录给提要，附录 F 逐段精读。
 
-需要 Python 3.10 或更新版本。PDF 提取与裁图使用 `pdfplumber`。HTML 渲染只使用 Python 标准库。可选用本地 LibreTranslate 或 Argos 生成初稿，详见[批量翻译与抽查](references/translation.md)。
+生成后双击 HTML 即可阅读。浏览器会本地保存笔记，也可用「导出笔记与标记」保存可携带的副本。
+
+## 命令行
+
+需要 Python 3.10+。文字和布局由 `pdfplumber` 提取，`pypdfium2` 批量渲染图表。布局和裁图可以在同一工作目录中复用。
 
 ```sh
 python -m pip install "pdfplumber>=0.11.9"
 python scripts/prepare_reader.py scan paper.pdf work
+python scripts/prepare_reader.py probe work --pages 8,9
 python scripts/prepare_reader.py draft paper.pdf work --crops crops.json
 python scripts/reader_jobs.py queue work/manuscript.json work/batches
+```
+
+根据候选坐标确认 `crops.json`，按批次生成译文补丁，再合并和构建。已有完整稿件时可以直接运行 `build_reader.py`。
+
+```sh
 python scripts/reader_jobs.py merge work/manuscript.json work/final.json work/patches
 python scripts/build_reader.py work/final.json paper-reader.html --source-pdf paper.pdf
 ```
 
-从坐标和选页缩略图核对裁图框。翻译时按批次生成只含中文字段的补丁，保留脚本从 PDF 提取的原文与页码。命令细节见[稿件格式](references/manuscript.md)。已有完整稿件可直接构建。双击生成的 HTML 即可打开。使用「导出笔记与标记」生成带笔记的副本。
+[稿件与裁图格式](references/manuscript.md) · [本地机翻与抽查](references/translation.md) · [跨 Agent 迁移](references/portability.md)

@@ -4,9 +4,10 @@ import argparse
 from collections import Counter, defaultdict
 from pathlib import Path
 import re
+from time import perf_counter
 
 from draft_translation import read_json, write_json
-from pdf_layout import crop
+from pdf_layout import checked_box, crop, pdf_digest
 
 
 CAPTION = re.compile(r"^(fig(?:ure)?\.?|table)\s+(\d+[a-z]?)\s*([:.])(?:\s|$)", re.I)
@@ -100,8 +101,8 @@ def caption_id(line):
     return ("table-" if match[1].lower() == "table" else "fig-") + match[2].lower()
 
 
-def scan(pdf, directory, columns):
-    pages, candidates, warnings = [], [], []
+def scan(pdf, columns):
+    pages, candidates = [], []
     for page in pdf.pages:
         lines = line_info(page, find_gutter=True)
         split = None
@@ -110,8 +111,6 @@ def scan(pdf, directory, columns):
         elif columns == "auto":
             split = detect_columns(page, lines)
         lines = order_columns(page, lines, split)
-        if not lines:
-            warnings.append({"page": page.page_number, "issue": "no text layer; check OCR"})
         captions = [
             {"id": name, "box": fragment["box"], "text": fragment["text"]}
             for line in lines for fragment in [line, *line.get("parts", [])]
@@ -133,13 +132,59 @@ def scan(pdf, directory, columns):
         pages.append({"page": page.page_number, "height": round(page.height, 1),
                       "width": round(page.width, 1), "columns": 2 if split else 1, "lines": lines})
         page.close()
-    write_json(directory / "layout.json", {"pages": pages, "title": str(pdf.metadata.get("Title") or "").strip(),
-                                         "authors": str(pdf.metadata.get("Author") or "").strip()})
-    write_json(directory / "figure-plan.json", candidates)
+    return {"pages": pages, "title": str(pdf.metadata.get("Title") or "").strip(),
+            "authors": str(pdf.metadata.get("Author") or "").strip()}, candidates
+
+
+def scan_summary(layout, candidates, reused, elapsed):
+    pages = layout["pages"]
+    warnings = [page["page"] for page in pages if not page["lines"]]
+    source = "cache" if reused else "pdfplumber"
     print(f"{len(pages)} pages, {sum(p['columns'] == 2 for p in pages)} two-column, "
-          f"{len(candidates)} pages with figure/table candidates, {len(warnings)} pages need OCR review.")
-    for warning in warnings:
-        print(f"Page {warning['page']}: {warning['issue']}")
+          f"{len(candidates)} with figure/table candidates ({source}: {elapsed:.2f}s).")
+    if warnings:
+        print("Pages without text; check OCR: " + ", ".join(map(str, warnings)))
+    if candidates:
+        labels = [
+            f"{page['page']}:" + (",".join(dict.fromkeys(caption["id"] for caption in page["captions"])) or "?")
+            for page in candidates
+        ]
+        print("Figure candidates (page:label, ? = geometry only): " + "  ".join(labels[:60]))
+        if len(labels) > 60:
+            print(f"{len(labels) - 60} additional candidate pages. Use probe --pages for the relevant range.")
+
+
+def probe(work, numbers, box, limit):
+    layout = read_json(work / "layout.json")
+    if box is None:
+        figures = layout.get("figure_candidates")
+        if figures is None:
+            figures = read_json(work / "figure-plan.json")
+        for page in figures:
+            if page["page"] not in numbers:
+                continue
+            for caption in page["captions"][:limit]:
+                print(f'p. {page["page"]} {caption["id"]} {caption["box"]} {caption["text"][:160]}')
+            rules = page["horizontal_rules"][:limit]
+            if rules:
+                print(f'p. {page["page"]} horizontal rules [x0,y,x1]: {[rule[:3] for rule in rules]}')
+            images = page["images"][:limit]
+            if images or page["vector_graphics"]:
+                print(f'p. {page["page"]} images {images}; vectors={page["vector_graphics"]}')
+        return
+    for page in layout["pages"]:
+        number = page["page"]
+        if number not in numbers:
+            continue
+        checked_box(box, page["width"], page["height"], number)
+        for line in page["lines"]:
+            for item in line.get("parts", [line]):
+                if not overlaps(item, box):
+                    continue
+                print(f'p. {number} {item["box"]} {item["text"]}')
+                limit -= 1
+                if not limit:
+                    return
 
 
 def running_margins(pages):
@@ -348,20 +393,57 @@ def main():
         command.add_argument("work", type=Path)
         if name == "scan":
             command.add_argument("--columns", choices=("auto", "one", "two"), default="auto")
-        else:
-            command.add_argument("--crops", type=Path)
+            command.add_argument("--refresh", action="store_true")
+        command.add_argument("--crops", type=Path)
+    probe_command = sub.add_parser("probe")
+    probe_command.add_argument("work", type=Path)
+    probe_command.add_argument("--pages", required=True, help="Comma-separated PDF page numbers")
+    probe_command.add_argument("--box", nargs=4, type=float, metavar=("X0", "TOP", "X1", "BOTTOM"))
+    probe_command.add_argument("--limit", type=int, default=12, help="Limit each geometry list or the total text lines")
     args = parser.parse_args()
     try:
-        if args.command == "scan" or args.crops:
-            import pdfplumber
-            with pdfplumber.open(args.pdf) as pdf:
-                if args.command == "scan":
-                    scan(pdf, args.work, args.columns)
-                    return
-                crop(pdf, args.crops, args.work / "media", 360)
-        layout = read_json(args.work / "layout.json")
+        if args.command == "probe":
+            numbers = {int(number) for number in args.pages.split(",")}
+            if min(numbers) < 1 or args.limit < 1:
+                raise ValueError("Page numbers and --limit must be positive.")
+            probe(args.work, numbers, args.box, args.limit)
+            return
+        started = perf_counter()
+        digest = pdf_digest(args.pdf)
+        layout_path, plan_path = (args.work / name for name in ("layout.json", "figure-plan.json"))
+        if args.command == "scan":
+            key = {"version": 2, "pdf": digest, "columns": args.columns}
+            layout = {}
+            candidates = []
+            if not args.refresh and layout_path.is_file() and plan_path.is_file():
+                try:
+                    layout = read_json(layout_path)
+                except (OSError, ValueError):
+                    layout = {}
+            reused = isinstance(layout, dict) and layout.get("scan") == key and "figure_candidates" in layout
+            if reused:
+                candidates = layout["figure_candidates"]
+            else:
+                import pdfplumber
+                with pdfplumber.open(args.pdf) as pdf:
+                    layout, candidates = scan(pdf, args.columns)
+                layout["scan"] = key
+                layout["figure_candidates"] = candidates
+                write_json(plan_path, candidates)
+                write_json(layout_path, layout)
+            scan_summary(layout, candidates, reused, perf_counter() - started)
+            if not args.crops:
+                return
+        else:
+            layout = read_json(layout_path)
+            if layout.get("scan", {}).get("pdf", digest) != digest:
+                raise ValueError("The cached layout belongs to another PDF. Run scan first.")
         items = read_json(args.crops) if args.crops else []
+        if items:
+            crop(args.pdf, items, args.work / "media", 360, digest=digest)
+        started = perf_counter()
         draft(layout, items, args.work / "manuscript.json")
+        print(f"Manuscript: {perf_counter() - started:.2f}s.")
     except (ImportError, OSError, ValueError, KeyError) as error:
         parser.exit(2, f"{error}\n")
 

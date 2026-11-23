@@ -1,6 +1,6 @@
 # 迁移到其他 Agent
 
-保留完整的 `paper-reading-html/` 目录及其中的 `SKILL.md`、`scripts/`、`references/` 和 `assets/`。Agent 需要能读取 PDF 和 Skill、运行 Python 3.10+ 并写入工作区。提取和裁切需要 `pdfplumber` 0.11.9 或更新版本；HTML 渲染使用 Python 标准库。离线机翻是可选依赖，见[批量翻译与抽查](translation.md)。
+保留完整的 `paper-reading-html/` 目录及其中的 `SKILL.md`、`scripts/`、`references/` 和 `assets/`。Agent 需要能读取 PDF 和 Skill、运行 Python 3.10+ 并写入工作区。提取使用 `pdfplumber` 0.11.9 或更新版本，其依赖 `pypdfium2` 和 Pillow 用于裁图与图册。HTML 构建使用 Python 标准库。离线机翻是可选依赖，见[批量翻译与抽查](translation.md)。
 
 ```text
 python -m pip install "pdfplumber>=0.11.9"

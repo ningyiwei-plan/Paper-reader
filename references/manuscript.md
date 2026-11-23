@@ -2,9 +2,10 @@
 
 ## 提取与补丁
 
-- `prepare_reader.py scan PAPER.pdf WORK` 将文字和坐标写入 `layout.json`，将图注、表格横线、光栅图像坐标及可能的矢量图页写入 `figure-plan.json`。后者提供候选，有时会遗漏嵌入图内的标签或把文本装饰识别成图表。只读取有疑问的页记录，必要时用 `pdf_layout.py contact PAPER.pdf WORK/previews --pages 2,5,8` 每六页拼一张。已核对的 `CROPS.json` 可直接复用。`--columns one` 或 `--columns two` 可手动覆盖早期版式判断。
-- `prepare_reader.py draft PAPER.pdf WORK --crops CROPS.json` 读取布局、批量裁图并生成 `manuscript.json`。`--crops` 适用于有选定图表的文档。查看它打印的章节、页段和块数，聚焦核对漏掉的章名、栏序、图表或 OCR 页。
+- `prepare_reader.py scan PAPER.pdf WORK` 写出布局缓存和 `figure-plan.json`，并打印候选页摘要。候选可能漏掉嵌在图片内的标签，或把装饰认作图表。用 `prepare_reader.py probe WORK --pages 8,9 --limit 6` 查看所选页的图注与几何。用 `prepare_reader.py probe WORK --pages 9 --box 285 604 520 639` 查看该栏的缓存文本。必要时用 `pdf_layout.py contact PAPER.pdf WORK/previews --pages 2,5,8` 每六页拼一张。`--columns one` 或 `--columns two` 可手动覆盖版式判断，`--refresh` 可重新扫描布局。
+- `prepare_reader.py draft PAPER.pdf WORK --crops CROPS.json` 读取布局、批量裁图并生成 `manuscript.json`。已核对清单可直接传给 `scan` 一次完成。布局按 PDF 内容和栏位参数复用，裁图按 PDF 内容、坐标和 DPI 复用。查看脚本打印的分阶段耗时和简短目录，重点核对漏掉的章名、栏序、图表或 OCR 页。
 - `reader_jobs.py queue BASE.json WORK/batches` 输出本次要处理的批次文件路径。每条记录包含稳定的 ID 和 `task`。每批保存一个 `WORK/patches/patch-001.json` 之类的文件。普通段落填 `zh`，选定的重点段落加 `explain`。图表有 `label` 但缺图注时，基于原图或可定位证据写中文说明。附录 `sampled: true` 时只概括摘录支持的内容，可在 `scope` 注明摘录范围。
+- 每个批次最多包含两条附录提要任务，单节默认最多带 2400 字符的原文摘录，可用 `--appendix-summary-chars` 调整。并行时逐批分配，先派发文本较长的批次。
 - `reader_jobs.py merge BASE.json WORK/final.json WORK/patches` 一次合并，可传多个独立补丁路径。补丁只含可编辑的中文字段，原文、源页和锚点来自稿件。已完成批次可复用。
 
 补丁示例

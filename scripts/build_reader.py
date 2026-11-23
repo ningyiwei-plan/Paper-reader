@@ -106,12 +106,13 @@ def build(manuscript, template, source_pdf=None, appendix="summary", detailed_ap
             translated = f'<div class="{"summary-text" if summary_only else "translation"}">{translation}</div>' if zh else ""
             insight = f'<div class="insight"><span class="eyebrow">释义</span><p class="markable" data-part="explain">{explanation}</p></div>' if explanation else ""
             kind = "figure" if "image" in block else "text"
-            units.append(f'''<div class="unit" id="{block_id}" data-kind="{kind}">
-  <article class="reading" aria-label="原文与译文">
+            translation_flag = " data-translation" if zh else ""
+            units.append(f'''<div class="unit" id="{block_id}" data-kind="{kind}"{translation_flag}>
+  <article class="reading" aria-label="{source_label}">
     <div class="source-line"><span>{source_label}</span><a href="#{block_id}" title="打开本段链接">{pages}</a></div>
     {heading}{original}
-    {translated}
   </article>
+  {translated}
   <aside class="annotation" aria-label="本段释义与笔记">
     {insight}
     <details class="note" data-note="{block_id}">

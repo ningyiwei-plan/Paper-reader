@@ -7,7 +7,7 @@ from pathlib import Path
 from draft_translation import read_json, write_json
 
 
-def sample_appendix(blocks, limit=5000):
+def sample_appendix(blocks, limit):
     sources = [block["original"] for block in blocks if block.get("original")]
     if sum(map(len, sources)) + 2 * len(sources) <= limit:
         return "\n\n".join(sources), False
@@ -17,7 +17,7 @@ def sample_appendix(blocks, limit=5000):
                        for index in indices if (text := sources[index])), True
 
 
-def jobs(paper, review, appendix, detailed):
+def jobs(paper, review, appendix, detailed, appendix_chars):
     if not any("\u3400" <= character <= "\u9fff" for character in paper["title"]):
         yield {"id": "paper", "title": paper["original_title"], "task": "translate-title"}
     for section in paper["sections"]:
@@ -29,7 +29,7 @@ def jobs(paper, review, appendix, detailed):
         if short:
             summary = section["summary"]
             if not summary.get("zh", "").strip():
-                evidence, sampled = sample_appendix(section["blocks"])
+                evidence, sampled = sample_appendix(section["blocks"], appendix_chars)
                 yield {"id": summary["id"], "section": section["title"], "pages": summary["pages"],
                        "task": "summarize-appendix", "excerpts": evidence, "sampled": sampled}
         for block in section["blocks"]:
@@ -50,7 +50,7 @@ def jobs(paper, review, appendix, detailed):
 
 def write_batches(items, directory, budget):
     directory.mkdir(parents=True, exist_ok=True)
-    batch, paths, size, total = [], [], 0, 0
+    batch, paths, size, total, summaries = [], [], 0, 0, 0
 
     def save():
         path = directory / f"batch-{len(paths) + 1:03}.json"
@@ -59,12 +59,14 @@ def write_batches(items, directory, budget):
 
     for item in items:
         char_count = len(json.dumps(item, ensure_ascii=False))
-        if batch and size + char_count > budget:
+        is_summary = item["task"] == "summarize-appendix"
+        if batch and (size + char_count > budget or (is_summary and summaries >= 2)):
             save()
-            batch, size = [], 0
+            batch, size, summaries = [], 0, 0
         batch.append(item)
         size += char_count
         total += 1
+        summaries += is_summary
     if batch:
         save()
     print(f"{total} jobs in {len(paths)} batches.")
@@ -108,6 +110,7 @@ def main():
     queue.add_argument("directory", type=Path)
     queue.add_argument("--review", type=Path)
     queue.add_argument("--batch-chars", type=int, default=12000)
+    queue.add_argument("--appendix-summary-chars", type=int, default=2400, help="Maximum source characters per short appendix summary")
     queue.add_argument("--appendix", choices=("summary", "full", "omit"), default="summary")
     queue.add_argument("--appendix-detail", action="append", default=[])
     apply = sub.add_parser("merge")
@@ -120,13 +123,16 @@ def main():
         if args.command == "queue":
             if args.batch_chars < 1:
                 raise ValueError("--batch-chars must be positive.")
+            if args.appendix_summary_chars < 128:
+                raise ValueError("--appendix-summary-chars must be at least 128.")
             detailed = set(args.appendix_detail)
             unknown = detailed - {section["id"] for section in paper["sections"] if section.get("appendix")}
             if unknown:
                 raise ValueError(f"Unknown appendix sections: {', '.join(sorted(unknown))}")
             review = ({row["id"]: row["reasons"] for row in read_json(args.review)["flagged"]}
                       if args.review else {})
-            write_batches(jobs(paper, review, args.appendix, detailed), args.directory, args.batch_chars)
+            pending = jobs(paper, review, args.appendix, detailed, args.appendix_summary_chars)
+            write_batches(pending, args.directory, args.batch_chars)
         else:
             paths = [file for path in args.patch
                      for file in (sorted(path.glob("patch-*.json")) if path.is_dir() else [path])]

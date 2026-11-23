@@ -64,6 +64,7 @@ function createReaderJudgments(storageKey, announce) {
       entries.append(item);
     }
     if (!dialog.open) dialog.showModal();
+    document.dispatchEvent(new Event("reader-judgments-render"));
   };
   const openForm = (note, fromList) => {
     current = note;

@@ -1,19 +1,33 @@
 """Inspect a PDF or crop its original figures, tables, and equations."""
 
 import argparse
-import json
-from pathlib import Path
 from collections import defaultdict
-from math import ceil, floor
+from contextlib import ExitStack
+import hashlib
+from math import ceil, floor, isfinite
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+from time import perf_counter
+
+from draft_translation import read_json, write_json
 
 
-def checked_box(value, page):
-    if len(value) != 4:
+def pdf_digest(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def checked_box(value, width, height, number):
+    if len(value) != 4 or not all(type(point) in (int, float) and isfinite(point) for point in value):
         raise ValueError("A box needs four coordinates: x0, top, x1, bottom")
     x0, top, x1, bottom = value
-    if not (0 <= x0 < x1 <= page.width + 0.1 and 0 <= top < bottom <= page.height + 0.1):
-        raise ValueError(f"Box {value} is outside page {page.page_number}")
-    return value
+    if not (0 <= x0 < min(x1, width) and x1 <= width + 0.1
+            and 0 <= top < min(bottom, height) and bottom <= height + 0.1):
+        raise ValueError(f"Box {value} is outside page {number}")
+    return x0, top, min(x1, width), min(bottom, height)
 
 
 def inspect(pdf, directory, dpi):
@@ -33,59 +47,112 @@ def inspect(pdf, directory, dpi):
         })
         page.to_image(resolution=dpi, antialias=True).original.save(directory / f"page-{page.page_number:03}.png")
         page.close()
-    (directory / "layout.json").write_text(
-        json.dumps(pages, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    write_json(directory / "layout.json", pages)
 
 
-def crop(pdf, manifest, directory, dpi):
-    jobs = json.loads(manifest.read_text(encoding="utf-8-sig"))
+def save_crop(image, path):
+    with NamedTemporaryFile(dir=path.parent, suffix=path.suffix, delete=False) as stream:
+        temporary = Path(stream.name)
+    try:
+        if path.suffix.lower() == ".webp":
+            image.save(temporary, format="WEBP", lossless=True, method=3)
+        else:
+            image.save(temporary, format="PNG", optimize=True)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def crop(pdf_path, jobs, directory, dpi, digest=None):
+    started = perf_counter()
     directory.mkdir(parents=True, exist_ok=True)
+    state = directory / ".crop-cache.json"
+    cache_key = {"version": 1, "pdf": digest or pdf_digest(pdf_path), "dpi": dpi}
+    cached = {}
+    if state.exists():
+        try:
+            cache = read_json(state)
+            if cache.get("key") == cache_key:
+                cached = cache["crops"]
+        except (AttributeError, KeyError, OSError, ValueError):
+            pass
     pages = defaultdict(list)
-    filenames = set()
+    reused = {}
+    seen = set()
     for job in jobs:
         number, name = job["page"], job["file"]
-        if type(number) is not int or not 1 <= number <= len(pdf.pages):
+        if type(number) is not int or number < 1:
             raise ValueError(f"Invalid page number: {number}")
         suffix = Path(name).suffix.lower()
-        if Path(name).name != name or suffix not in {".png", ".webp"} or name in filenames:
+        if Path(name).name != name or suffix not in {".png", ".webp"} or name.casefold() in seen:
             raise ValueError(f"Expected a PNG or WebP filename: {name}")
-        filenames.add(name)
-        pages[number].append((name, checked_box(job["box"], pdf.pages[number - 1])))
-    for number, items in pages.items():
-        page = pdf.pages[number - 1]
-        rendered = page.to_image(resolution=dpi, antialias=True) if page.bbox == page.cropbox else None
-        for name, box in items:
-            # Pdfplumber renders the full page even when given a cropped page.
-            # Keep the render once per page and round the crop outwards.
-            x0, y0, x1, y1 = box
-            if rendered:
-                left, top, _, _ = rendered.bbox
-                scale = rendered.scale
-                image = rendered.original.crop((floor((x0 - left) * scale), floor((y0 - top) * scale),
-                                                ceil((x1 - left) * scale), ceil((y1 - top) * scale)))
-            else:
-                image = page.crop(box).to_image(resolution=dpi, antialias=True).original
-            if Path(name).suffix.lower() == ".webp":
-                image.save(directory / name, lossless=True, method=3)
-            else:
-                image.save(directory / name, optimize=True)
-        page.close()
+        seen.add(name.casefold())
+        path = directory / name
+        previous = cached.get(name, {})
+        if (previous.get("page") == number and previous.get("box") == job["box"]
+                and path.is_file() and path.stat().st_size == previous.get("bytes")):
+            reused[name] = previous
+        else:
+            pages[number].append(job)
+    results = dict(reused)
+    if pages:
+        import pypdfium2 as pdfium
+
+        with ExitStack() as stack:
+            pdf = stack.enter_context(pdfium.PdfDocument(pdf_path))
+            legacy = None
+            for number, items in pages.items():
+                if number > len(pdf):
+                    raise ValueError(f"Invalid page number: {number}")
+                page = pdf[number - 1]
+                width, height = page.get_size()
+                origin = (0, 0, width, height)
+                if page.get_mediabox() != origin or page.get_cropbox() != origin:
+                    if legacy is None:
+                        import pdfplumber
+                        legacy = stack.enter_context(pdfplumber.open(pdf_path))
+                    source = legacy.pages[number - 1]
+                    for job in items:
+                        box = checked_box(job["box"], source.width, source.height, number)
+                        image = source.crop(box).to_image(resolution=dpi, antialias=True).original
+                        save_crop(image, directory / job["file"])
+                    source.close()
+                else:
+                    scale = dpi / 72
+                    bitmap = page.render(scale=scale)
+                    try:
+                        image = bitmap.to_pil()
+                        for job in items:
+                            x0, y0, x1, y1 = checked_box(job["box"], width, height, number)
+                            bounds = (floor(x0 * scale), floor(y0 * scale), ceil(x1 * scale), ceil(y1 * scale))
+                            save_crop(image.crop(bounds), directory / job["file"])
+                    finally:
+                        bitmap.close()
+                page.close()
+                for job in items:
+                    name = job["file"]
+                    results[name] = {"page": number, "box": job["box"], "bytes": (directory / name).stat().st_size}
+        write_json(state, {"key": cache_key, "crops": results})
+    print(f"Crops: {len(results) - len(reused)} rendered, {len(reused)} reused at {dpi} DPI "
+          f"({perf_counter() - started:.2f}s).")
 
 
 def contact(pdf, directory, numbers, dpi):
     from PIL import Image, ImageDraw
 
-    if not numbers or any(number < 1 or number > len(pdf.pages) for number in numbers):
+    if not numbers or any(number < 1 or number > len(pdf) for number in numbers):
         raise ValueError("Select valid PDF page numbers.")
     directory.mkdir(parents=True, exist_ok=True)
     for offset in range(0, len(numbers), 6):
         selected = numbers[offset:offset + 6]
         frames = []
         for number in selected:
-            page = pdf.pages[number - 1]
-            rendered = page.to_image(resolution=dpi, antialias=True)
-            frames.append(rendered.original.convert("RGB"))
+            page = pdf[number - 1]
+            bitmap = page.render(scale=dpi / 72)
+            try:
+                frames.append(bitmap.to_pil().convert("RGB"))
+            finally:
+                bitmap.close()
             page.close()
         width = max(frame.width for frame in frames) + 12
         height = max(frame.height for frame in frames) + 31
@@ -117,20 +184,18 @@ def main():
     if not 72 <= args.dpi <= 600:
         parser.error("--dpi must be between 72 and 600")
     try:
-        import pdfplumber
-    except ImportError:
-        parser.exit(2, "PDF layout requires pdfplumber. Use the bundled Python or install pdfplumber.\n")
-    try:
-        with pdfplumber.open(args.pdf) as pdf:
-            if args.command == "inspect":
+        if args.command == "inspect":
+            import pdfplumber
+            with pdfplumber.open(args.pdf) as pdf:
                 inspect(pdf, args.directory, args.dpi)
-            elif args.command == "contact":
+        elif args.command == "contact":
+            import pypdfium2 as pdfium
+            with pdfium.PdfDocument(args.pdf) as pdf:
                 numbers = list(dict.fromkeys(int(value) for value in args.pages.split(",")))
                 contact(pdf, args.directory, numbers, args.dpi)
-            else:
-                crop(pdf, args.manifest, args.directory, args.dpi)
-                print(f"Cropped {len(json.loads(args.manifest.read_text(encoding='utf-8-sig')))} assets at {args.dpi} DPI.")
-    except (OSError, ValueError, KeyError) as error:
+        else:
+            crop(args.pdf, read_json(args.manifest), args.directory, args.dpi)
+    except (ImportError, OSError, ValueError, KeyError) as error:
         parser.exit(2, f"{error}\n")
 
 
