@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN" data-paper="@@DOC_ID@@" data-edition="original">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>@@TITLE@@ · 论文精读</title>
+<style>
+:root {
+  --paper: #f7f5ef; --white: #fffefa; --ink: #192b2c; --muted: #536564;
+  --dark: #102d2d; --mint: #d1ede4; --accent: #166352; --line: #d8e1db;
+  --sans: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
+  --serif: "Noto Serif CJK SC", "Songti SC", "SimSun", Georgia, serif;
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 90px; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.75 var(--sans); }
+a { color: var(--accent); }
+button, textarea { font: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid #bd7b43; outline-offset: 3px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.wrap { max-width: 1320px; width: calc(100% - 96px); margin: auto; }
+.bar { background: var(--dark); color: #eef7f2; position: sticky; top: 0; z-index: 3; border-bottom: 1px solid #45615e; }
+.bar .wrap { display: flex; justify-content: space-between; align-items: center; min-height: 60px; gap: 12px; }
+.brand { color: #f2f6f0; text-decoration: none; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+.brand::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 10px; border: 2px solid #9bdbca; border-radius: 2px; transform: rotate(45deg); }
+.actions { display: flex; gap: 8px; }
+.actions button { border: 1px solid #65847e; border-radius: 8px; padding: 5px 12px; background: transparent; color: #eef7f2; font-size: 13px; }
+.actions button:hover { background: #294a46; }
+.actions #export { background: var(--mint); color: var(--dark); border-color: var(--mint); font-weight: 700; }
+.hero { background: var(--dark); color: #f7f5ee; border-bottom: 5px solid #9ccbbd; }
+.hero .wrap { padding: 48px 0 43px; }
+.hero .citation { margin: 0 0 13px; font: 13px/1.55 ui-monospace, Consolas, monospace; color: #b2ddd0; }
+.hero h1 { max-width: 1000px; margin: 0; font: 700 clamp(29px, 4.1vw, 55px)/1.22 var(--serif); text-wrap: balance; }
+.hero .english-title { max-width: 800px; font: 20px/1.4 Georgia, serif; color: #d9e7e1; margin: 16px 0 8px; }
+.hero .authors { color: #c4d8d1; font-size: 13px; margin: 0; }
+.hero p:empty, .chapter-heading span:empty, .scope:empty { display: none; }
+.layout { display: grid; grid-template-columns: 174px minmax(0, 1fr); align-items: start; gap: clamp(24px, 4vw, 54px); padding-top: 33px; }
+.toc { position: sticky; top: 84px; max-height: calc(100vh - 104px); overflow-y: auto; padding: 8px 9px 12px 0; }
+.toc h2 { font-size: 12px; color: var(--muted); letter-spacing: .14em; margin: 0 0 12px 10px; }
+.toc a { display: block; padding: 5px 9px; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; color: var(--muted); font-size: 13px; text-decoration: none; }
+.toc a:hover, .toc a[aria-current] { background: #e5eee8; color: var(--accent); border-left-color: #408574; }
+.scope { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+.chapter { margin-bottom: 44px; }
+.chapter-heading { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; padding-bottom: 10px; border-bottom: 1px solid #a5b9ae; margin-bottom: 16px; }
+.chapter h2 { font: 700 27px/1.3 var(--serif); margin: 0; }
+.chapter-heading span { color: var(--muted); font: 14px/1.5 Georgia, serif; }
+.unit { display: grid; grid-template-columns: minmax(0, 1.92fr) minmax(220px, 1fr); gap: 18px; margin-bottom: 14px; align-items: start; }
+.unit:target .reading { outline: 2px solid #81b4a2; outline-offset: 2px; }
+.reading, .insight { padding: 18px 21px; border: 1px solid var(--line); border-radius: 11px; }
+.reading { background: var(--white); }
+.source-line { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font: 12px/1.5 var(--sans); }
+.source-line a { font-family: ui-monospace, Consolas, monospace; text-decoration: none; white-space: nowrap; }
+.source-line a:hover { text-decoration: underline; }
+.reading h3 { font-size: 15px; margin: 9px 0 0; }
+.original, figcaption { white-space: pre-line; overflow-wrap: anywhere; font: 17px/1.56 Georgia, "Times New Roman", serif; margin: 8px 0 0; }
+.translation { border-top: 1px solid #e6e9e0; margin-top: 14px; padding-top: 10px; }
+.eyebrow { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.translation p, .summary-text p, .insight p { margin: 4px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
+.summary-text { margin-top: 8px; }
+.reader-highlight { background: #ffe195; color: inherit; border-radius: 2px; }
+.reader-bold { font-weight: 750; }
+#mark-tools { position: fixed; z-index: 5; padding: 4px; border: 1px solid #45615e; border-radius: 8px; background: var(--dark); box-shadow: 0 3px 14px #192b2c38; }
+#mark-tools button { background: transparent; border: 0; border-radius: 5px; color: #fffefa; padding: 4px 9px; font-size: 12px; }
+#mark-tools button:hover { background: #294a46; }
+.insight { background: #e9f1eb; border-color: #d5e3d9; }
+.insight p { font-size: 14px; }
+.note { margin-top: 8px; border: 1px solid var(--line); background: #f3f3eb; border-radius: 9px; padding: 9px 12px; color: #3f5651; }
+.note summary { cursor: pointer; font-size: 13px; font-weight: 650; }
+.note-state { float: right; font-size: 11px; font-weight: 400; }
+.note textarea { width: 100%; display: block; margin-top: 8px; resize: vertical; padding: 8px; color: var(--ink); background: var(--white); border: 1px solid #acbeb4; border-radius: 6px; font-size: 13px; }
+figure { margin: 10px 0 0; }
+.figure-trigger { display: block; width: 100%; padding: 6px; border: 1px solid #dfE5dd; border-radius: 7px; background: white; color: var(--accent); font-size: 11px; }
+.figure-trigger img { display: block; width: auto; max-width: 100%; max-height: 560px; height: auto; margin: auto; object-fit: contain; }
+.figure-trigger span { display: block; margin-top: 4px; text-align: right; }
+figcaption { font-size: 15px; color: #455956; }
+dialog { position: fixed; border: 0; border-radius: 12px; padding: 12px; max-width: min(96vw, 1500px); max-height: 96vh; background: white; }
+dialog::backdrop { background: #071d1ce6; }
+#figure-view form { display: flex; justify-content: flex-end; gap: 7px; }
+dialog button { padding: 4px 13px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 6px; background: #f1f5ed; }
+.figure-pane { overflow: auto; max-width: 91vw; max-height: 83vh; }
+.figure-pane img { display: block; max-width: min(91vw, 1380px); max-height: 82vh; width: auto; height: auto; margin: auto; }
+.figure-pane[data-full] img { max-width: none; max-height: none; margin: 0; }
+footer { padding: 0 0 24px; color: var(--muted); font-size: 12px; }
+#status:not(:empty) { position: fixed; bottom: 16px; right: 16px; max-width: calc(100vw - 32px); z-index: 4; padding: 8px 14px; background: var(--dark); color: white; border-radius: 8px; }
+@media (max-width: 1050px) { .wrap { width: calc(100% - 48px); } .layout { grid-template-columns: 125px minmax(0, 1fr); gap: 20px; } }
+@media (max-width: 800px) {
+  .layout { display: block; padding-top: 15px; }
+  .toc { display: flex; position: static; overflow-x: auto; gap: 4px; margin-bottom: 14px; padding: 0 0 8px; align-items: center; }
+  .toc h2 { margin: 0 6px 0 0; }
+  .toc a, .toc h2 { white-space: nowrap; }
+}
+@media (max-width: 590px) {
+  .wrap { width: calc(100% - 28px); }
+  .hero .wrap { padding: 26px 0; }
+  .hero .english-title { font-size: 17px; }
+  .unit { display: block; margin-bottom: 22px; }
+  .annotation { margin-top: 7px; }
+  .reading, .insight { padding: 14px; }
+  .chapter h2 { font-size: 23px; }
+}
+@media print { .bar,.toc,footer,dialog,#mark-tools { display: none; } .layout { display: block; } .wrap { width: 100%; } .hero { background: white; color: var(--ink); } .hero p { color: var(--ink) !important; } .unit { break-inside: avoid; } }
+@@APPEARANCE_STYLE@@
+</style>
+</head>
+<body id="top">
+<header class="bar"><div class="wrap">
+  <a class="brand" href="#top">论文精读</a>
+  <div class="appearance"><label for="reader-theme">外观</label><select id="reader-theme"><option value="paper">纸本</option><option value="clear">清透</option><option value="night">夜读</option></select></div>
+  <div class="actions"><button type="button" id="open-judgments">判断笔记<span></span></button>@@PDF_BUTTON@@<button type="button" id="export">导出笔记与标记</button></div>
+</div></header>
+<div class="hero"><div class="wrap">
+  <p class="citation">@@CITATION@@</p>
+  <h1>@@TITLE@@</h1>
+  <p class="english-title" lang="en">@@ORIGINAL_TITLE@@</p>
+  <p class="authors">@@AUTHORS@@</p>
+</div></div>
+<div class="layout wrap">
+  <nav class="toc" aria-label="论文目录"><h2>目录</h2>@@TOC@@</nav>
+  <main><p class="scope">@@SCOPE@@</p>@@SECTIONS@@<footer>选中文字可高亮、加粗或记下判断。笔记、判断和标记可随 HTML 一起导出。</footer></main>
+</div>
+<dialog id="figure-view">
+  <form method="dialog"><button type="button" id="figure-zoom" aria-pressed="false">原尺寸</button><button aria-label="关闭图片">关闭</button></form>
+  <div class="figure-pane" tabindex="0" aria-label="图片查看区"><img alt=""></div>
+</dialog>
+<dialog id="judgments" aria-labelledby="judgment-title">
+  <div class="judgment-header">
+    <h2 id="judgment-title">判断笔记</h2>
+    <button type="button" data-close-judgments>关闭判断笔记</button>
+  </div>
+  <div id="judgment-list">
+    <p id="judgment-empty">选中一段文字，点击「记下判断」即可保存带出处的笔记。</p>
+    <div class="judgment-entries"></div>
+  </div>
+  <form id="judgment-form" hidden>
+    <p class="judgment-citation" id="judgment-source"></p>
+    <blockquote id="judgment-quote"></blockquote>
+    <label for="judgment-thought">我的判断</label>
+    <textarea id="judgment-thought" name="thought" rows="3" placeholder="我怎么理解这句话或这个结果？"></textarea>
+    <details id="judgment-prompts">
+      <summary>深入追问</summary>
+      <label for="judgment-alternative">还有什么解释？</label>
+      <textarea id="judgment-alternative" name="alternative" rows="2"></textarea>
+      <label for="judgment-evidence">什么证据会改变我的判断？</label>
+      <textarea id="judgment-evidence" name="evidence" rows="2"></textarea>
+    </details>
+    <p role="status" id="judgment-error"></p>
+    <div class="judgment-controls">
+      <button type="button" data-delete-judgment>删除笔记</button>
+      <button type="button" data-cancel-judgment>取消</button>
+      <button type="submit">保存判断</button>
+    </div>
+  </form>
+</dialog>
+<template id="judgment-item">
+  <article class="judgment-entry">
+    <p class="judgment-citation"></p>
+    <blockquote></blockquote>
+    <dl>
+      <div data-field="thought"><dt>我的判断</dt><dd></dd></div>
+      <div data-field="alternative"><dt>其他解释</dt><dd></dd></div>
+      <div data-field="evidence"><dt>待核实的证据</dt><dd></dd></div>
+    </dl>
+    <div class="judgment-links"><a>回到原段</a><button type="button">编辑判断</button></div>
+  </article>
+</template>
+<div id="mark-tools" role="group" aria-label="文字标记" hidden>
+  <button type="button" data-mark="highlight">高亮</button>
+  <button type="button" data-mark="bold">加粗</button>
+  <button type="button" data-mark="clear">清除</button>
+  <button type="button" data-mark="judge">记下判断</button>
+</div>
+<div id="status" role="status"></div>
+<script id="saved-notes" type="application/json">{}</script>
+<script id="saved-marks" type="application/json">{}</script>
+<script id="saved-judgments" type="application/json">[]</script>
+@@PDF_DATA@@
+<script>
+@@MARKS_SCRIPT@@
+@@JUDGMENTS_SCRIPT@@
+(() => {
+  const status = document.getElementById("status");
+  let statusTimer;
+  const announce = (message) => {
+    status.textContent = message;
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => { status.textContent = ""; }, 4500);
+  };
+  const root = document.documentElement;
+  const storageKey = "paper-reader:" + root.dataset.paper + ":" + root.dataset.edition;
+  const themeSelect = document.getElementById("reader-theme");
+  const themeKey = storageKey + ":appearance";
+  const applyTheme = (requested) => {
+    themeSelect.value = ["paper", "clear", "night"].includes(requested) ? requested : "paper";
+    root.dataset.theme = themeSelect.value;
+  };
+  applyTheme(root.dataset.theme);
+  try {
+    applyTheme(localStorage.getItem(themeKey) || root.dataset.theme);
+  } catch {
+    // The selected appearance still works for this session.
+  }
+  themeSelect.addEventListener("change", () => {
+    applyTheme(themeSelect.value);
+    try { localStorage.setItem(themeKey, root.dataset.theme); } catch { }
+  });
+  const judgments = createReaderJudgments(storageKey, announce);
+  const exportMarks = createReaderMarks(storageKey, announce, judgments.newNote);
+  const notes = document.querySelectorAll("[data-note]");
+  let saved = JSON.parse(document.getElementById("saved-notes").textContent);
+  let canSave = true;
+  try {
+    const existing = localStorage.getItem(storageKey);
+    if (existing !== null) saved = JSON.parse(existing);
+  } catch {
+    canSave = false;
+    announce("浏览器无法读取本地笔记。可导出 HTML 保存本次输入。");
+  }
+  const collect = () => Object.fromEntries(Array.from(notes, (note) => [
+    note.dataset.note, note.querySelector("textarea").value
+  ]).filter((entry) => entry[1] !== ""));
+  for (const note of notes) {
+    const field = note.querySelector("textarea");
+    const indicator = note.querySelector(".note-state");
+    field.value = typeof saved[note.dataset.note] === "string" ? saved[note.dataset.note] : "";
+    indicator.textContent = field.value ? "有笔记" : "";
+    field.addEventListener("input", () => {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(collect()));
+        indicator.textContent = field.value ? "已保存" : "";
+      } catch {
+        if (canSave) announce("浏览器无法保存笔记。请导出 HTML 保留本次输入。");
+        canSave = false;
+        indicator.textContent = "待导出";
+      }
+    });
+  }
+  const download = (name, content) => {
+    const url = URL.createObjectURL(content);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  };
+  const source = document.getElementById("download-source");
+  if (source) source.addEventListener("click", () => {
+    const binary = atob(document.getElementById("source-pdf").textContent);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    download(source.dataset.name, new Blob([bytes], { type: "application/pdf" }));
+  });
+  document.getElementById("export").addEventListener("click", () => {
+    const copy = root.cloneNode(true);
+    copy.dataset.edition = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+    copy.querySelector("#saved-notes").textContent = JSON.stringify(collect()).replaceAll("<", "\\u003c");
+    judgments.embed(copy);
+    exportMarks(copy);
+    copy.querySelector("#status").textContent = "";
+    copy.querySelectorAll("[aria-current]").forEach((link) => link.removeAttribute("aria-current"));
+    const dialog = copy.querySelector("#figure-view");
+    dialog.removeAttribute("open");
+    dialog.querySelector("img").removeAttribute("src");
+    dialog.querySelector(".figure-pane").removeAttribute("data-full");
+    const copyZoom = dialog.querySelector("#figure-zoom");
+    copyZoom.textContent = "原尺寸";
+    copyZoom.setAttribute("aria-pressed", "false");
+    const name = document.title.split(" · ")[0].replace(/[<>:"/\\|?*]/g, "_");
+    download(name + "（含笔记与标记）.html", new Blob(["<!doctype html>\n", copy.outerHTML], { type: "text/html;charset=utf-8" }));
+    announce("已导出含笔记与标记的 HTML。");
+  });
+  const viewer = document.getElementById("figure-view");
+  const pane = viewer.querySelector(".figure-pane");
+  const zoom = document.getElementById("figure-zoom");
+  const setZoom = (full) => {
+    pane.toggleAttribute("data-full", full);
+    zoom.setAttribute("aria-pressed", String(full));
+    zoom.textContent = full ? "适应窗口" : "原尺寸";
+    if (!full) pane.scrollTo(0, 0);
+  };
+  zoom.addEventListener("click", () => setZoom(!pane.hasAttribute("data-full")));
+  const enlarged = viewer.querySelector("img");
+  for (const button of document.querySelectorAll(".figure-trigger")) {
+    button.addEventListener("click", () => {
+      const graphic = button.querySelector("img");
+      enlarged.src = graphic.src;
+      enlarged.alt = graphic.alt;
+      viewer.showModal();
+      setZoom(false);
+    });
+  }
+  const links = Array.from(document.querySelectorAll(".toc a"));
+  const chapters = links.map((link) => document.getElementById(link.hash.slice(1)));
+  const updateToc = () => {
+    let active = 0;
+    for (let i = 0; i < chapters.length; i++) {
+      if (chapters[i].getBoundingClientRect().top <= 115) active = i;
+      else break;
+    }
+    links.forEach((link, i) => {
+      if (i === active) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    });
+  };
+  window.addEventListener("scroll", updateToc, { passive: true });
+  updateToc();
+})();
+</script>
+</body>
+</html>
