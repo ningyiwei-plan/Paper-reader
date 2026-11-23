@@ -108,7 +108,9 @@ def review_reasons(section, block, glossary):
                         and not re.search(r"[不未无非没勿]", zh))
     if has_condition or dropped_negation:
         reasons.append("negation-or-conditions")
-    if re.search(r"abstract|conclusion", section["id"], flags=re.I):
+    if re.search(r"abstract|conclusion|摘要|结论", " ".join(
+        section.get(key, "") for key in ("id", "title", "subtitle")
+    ), flags=re.I):
         reasons.append("key-section")
     if any(re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", source, flags=re.I) and expected not in zh
            for term, expected in glossary.items()):
@@ -119,8 +121,8 @@ def review_reasons(section, block, glossary):
 
 
 def selected_sections(manuscript, appendix, detailed):
-    return [section for section in manuscript["sections"] if not section.get("appendix")
-            or appendix == "full" or section["id"] in detailed]
+    return [section for section in manuscript["sections"] if not section.get("bibliography")
+            and (not section.get("appendix") or appendix == "full" or section["id"] in detailed)]
 
 
 def fill(sections, args):

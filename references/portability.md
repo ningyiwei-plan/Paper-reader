@@ -8,6 +8,6 @@ python -m pip install "pdfplumber>=0.11.9"
 
 DeepSeek Harness 可将整个目录放到项目的 `.dsh/skills/paper-reading-html/`。也可用项目的 `.agents/skills/paper-reading-html/`，或用户目录 `~/.dsh/skills/paper-reading-html/`（设置了 `DSH_HOME` 时使用该目录）。在项目会话中明确指定 `paper-reading-html`，让 Agent 加载技能后使用提供的 PDF。自定义 Agent 预设需启用文件系统技能提供器及相应加载工具。
 
-前置检查可运行 `python scripts/pdf_layout.py --help` 和 `python scripts/build_reader.py --help`。脚本路径相对于技能目录。其他没有自动发现的 Agent 也可以接受 `SKILL.md` 的完整路径，并按文件引用执行。输出在浏览器本地打开，运行时无需 Agent。
+前置检查可运行 `python -c "import pdfplumber"` 和 `python scripts/prepare_reader.py --help`。Windows 上优先使用 DSH 工作区依赖提供的 Python，尤其是系统 Python 导入不了 `pdfplumber` 时。其他 Agent 可读取 `SKILL.md` 的完整路径后执行。HTML 在本地浏览器完成搜索与筛选。
 
 [DeepSeek Harness 文件系统 Skill 官方文档](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/skill/skill-filesystem)

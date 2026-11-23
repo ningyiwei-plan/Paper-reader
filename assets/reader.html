@@ -42,6 +42,13 @@ button { cursor: pointer; }
 .toc a { display: block; padding: 5px 9px; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; color: var(--muted); font-size: 13px; text-decoration: none; }
 .toc a:hover, .toc a[aria-current] { background: #e5eee8; color: var(--accent); border-left-color: #408574; }
 .scope { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+.reader-search { padding: 12px 15px 9px; margin: 0 0 22px; border: 1px solid var(--line); border-radius: 11px; background: var(--white); }
+.reader-search-controls { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.reader-search-field { display: grid; gap: 3px; color: var(--muted); font-size: 12px; }
+.reader-search :is(input, select, button) { width: 100%; min-width: 0; min-height: 36px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--paper); font: 14px var(--sans); }
+.reader-search button:hover { background: var(--soft); }
+.reader-search p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.unit[hidden], .toc a[hidden] { display: none; }
 .chapter { margin-bottom: 44px; }
 .chapter-heading { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; padding-bottom: 10px; border-bottom: 1px solid #a5b9ae; margin-bottom: 16px; }
 .chapter h2 { font: 700 27px/1.3 var(--serif); margin: 0; }
@@ -99,8 +106,11 @@ footer { padding: 0 0 24px; color: var(--muted); font-size: 12px; }
   .annotation { margin-top: 7px; }
   .reading, .insight { padding: 14px; }
   .chapter h2 { font-size: 23px; }
+  .reader-search-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .reader-search-field:first-child { grid-column: 1 / -1; }
+  .reader-search button { width: auto; justify-self: start; }
 }
-@media print { .bar,.toc,footer,dialog,#mark-tools { display: none; } .layout { display: block; } .wrap { width: 100%; } .hero { background: white; color: var(--ink); } .hero p { color: var(--ink) !important; } .unit { break-inside: avoid; } }
+@media print { .bar,.toc,footer,dialog,#mark-tools,.reader-search { display: none; } .layout { display: block; } .wrap { width: 100%; } .hero { background: white; color: var(--ink); } .hero p { color: var(--ink) !important; } .unit { break-inside: avoid; } }
 @@APPEARANCE_STYLE@@
 </style>
 </head>
@@ -118,7 +128,19 @@ footer { padding: 0 0 24px; color: var(--muted); font-size: 12px; }
 </div></div>
 <div class="layout wrap">
   <nav class="toc" aria-label="论文目录"><h2>目录</h2>@@TOC@@</nav>
-  <main><p class="scope">@@SCOPE@@</p>@@SECTIONS@@<footer>选中文字可高亮、加粗或记下判断。笔记、判断和标记可随 HTML 一起导出。</footer></main>
+  <main>
+    <p class="scope">@@SCOPE@@</p>
+    <form class="reader-search" role="search" aria-label="论文搜索" hidden>
+      <div class="reader-search-controls">
+        <div class="reader-search-field"><label for="reader-query">关键词</label><input type="search" id="reader-query" name="query" placeholder="搜索原文、译文、释义或笔记" autocomplete="off"></div>
+        <div class="reader-search-field"><label for="reader-chapter">章节</label><select id="reader-chapter" name="chapter"><option value="">全部章节</option></select></div>
+        <div class="reader-search-field"><label for="reader-kind">内容</label><select id="reader-kind" name="kind"><option value="">全部内容</option><option value="text">文字</option><option value="figure">图表</option><option value="appendix">附录</option><option value="notes">有笔记</option></select></div>
+        <button type="reset">清除筛选</button>
+      </div>
+      <p role="status" class="search-count"></p>
+    </form>
+    @@SECTIONS@@<footer>选中文字可高亮、加粗或记下判断。笔记、判断和标记可随 HTML 一起导出。</footer>
+  </main>
 </div>
 <dialog id="figure-view">
   <form method="dialog"><button type="button" id="figure-zoom" aria-pressed="false">原尺寸</button><button aria-label="关闭图片">关闭</button></form>
@@ -179,6 +201,7 @@ footer { padding: 0 0 24px; color: var(--muted); font-size: 12px; }
 <script>
 @@MARKS_SCRIPT@@
 @@JUDGMENTS_SCRIPT@@
+@@SEARCH_SCRIPT@@
 (() => {
   const status = document.getElementById("status");
   let statusTimer;
@@ -258,6 +281,10 @@ footer { padding: 0 0 24px; color: var(--muted); font-size: 12px; }
     copy.querySelector("#saved-notes").textContent = JSON.stringify(collect()).replaceAll("<", "\\u003c");
     judgments.embed(copy);
     exportMarks(copy);
+    copy.querySelector(".reader-search").hidden = true;
+    copy.querySelectorAll('select[name="chapter"] option[value]:not([value=""])').forEach((option) => option.remove());
+    copy.querySelector(".search-count").textContent = "";
+    copy.querySelectorAll(".chapter[hidden], .unit[hidden], .toc a[hidden]").forEach((node) => { node.hidden = false; });
     copy.querySelector("#status").textContent = "";
     copy.querySelectorAll("[aria-current]").forEach((link) => link.removeAttribute("aria-current"));
     const dialog = copy.querySelector("#figure-view");
@@ -294,9 +321,10 @@ footer { padding: 0 0 24px; color: var(--muted); font-size: 12px; }
   const links = Array.from(document.querySelectorAll(".toc a"));
   const chapters = links.map((link) => document.getElementById(link.hash.slice(1)));
   const updateToc = () => {
-    let active = 0;
+    let active = -1;
     for (let i = 0; i < chapters.length; i++) {
-      if (chapters[i].getBoundingClientRect().top <= 115) active = i;
+      if (chapters[i].hidden) continue;
+      if (active === -1 || chapters[i].getBoundingClientRect().top <= 115) active = i;
       else break;
     }
     links.forEach((link, i) => {
@@ -304,6 +332,7 @@ footer { padding: 0 0 24px; color: var(--muted); font-size: 12px; }
       else link.removeAttribute("aria-current");
     });
   };
+  createReaderSearch(chapters, links, judgments, updateToc);
   window.addEventListener("scroll", updateToc, { passive: true });
   updateToc();
 })();

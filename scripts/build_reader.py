@@ -14,9 +14,9 @@ def escape(value):
 
 
 def required(data, key):
-    value = data[key]
+    value = data.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{key} must be nonempty text")
+        raise ValueError(f"{data.get('id', 'paper')}.{key} must be nonempty text")
     return escape(value.strip())
 
 
@@ -26,6 +26,15 @@ def image_markup(block, root):
     if not path.is_relative_to(root) or path.suffix.lower() not in mime_types:
         raise ValueError(f"Image must be a PNG/JPEG/WebP under the manuscript directory: {path}")
     graphic = path.read_bytes()
+    kind = path.suffix.lower()
+    valid = {
+        ".png": graphic.startswith(b"\x89PNG\r\n\x1a\n") and len(graphic) >= 24,
+        ".webp": graphic.startswith(b"RIFF") and graphic[8:12] == b"WEBP"
+                 and len(graphic) == 8 + int.from_bytes(graphic[4:8], "little"),
+        ".jpg": graphic.startswith(b"\xff\xd8") and graphic.endswith(b"\xff\xd9"),
+    }
+    if not valid[".jpg" if kind == ".jpeg" else kind]:
+        raise ValueError(f"Invalid image file: {path}")
     encoded = base64.b64encode(graphic).decode("ascii")
     dimensions = ""
     if graphic.startswith(b"\x89PNG\r\n\x1a\n") and len(graphic) >= 24:
@@ -75,8 +84,10 @@ def build(manuscript, template, source_pdf=None, appendix="summary", detailed_ap
         for block in blocks:
             block_id = anchor(block)
             pages = required(block, "pages")
-            zh = required(block, "summary_zh" if not is_detailed and "summary_zh" in block else "zh")
-            explanation = required(block, "explain")
+            bibliography = section.get("bibliography", False)
+            zh_key = "summary_zh" if not is_detailed and "summary_zh" in block else "zh"
+            zh = "" if bibliography else required(block, zh_key)
+            explanation = escape(block.get("explain", "").strip())
             label = escape(block.get("label", ""))
             original = escape(block.get("original", "").strip())
             summary_only = block.get("summary_only", False)
@@ -88,18 +99,21 @@ def build(manuscript, template, source_pdf=None, appendix="summary", detailed_ap
             elif not summary_only:
                 raise ValueError(f"{block_id} has neither original text nor an image")
             heading = f'<h3>{label}</h3>' if label else ""
-            source_label = "附录提要" if summary_only else "原文"
+            source_label = "附录提要" if summary_only else "书目信息" if bibliography else "原文"
             zh_label = "中文图表说明" if not is_detailed and "image" in block else "中文翻译"
             translation = (f'<p class="markable" data-part="zh">{zh}</p>' if summary_only else
                            f'<span class="eyebrow">{zh_label}</span><p class="markable" data-part="zh">{zh}</p>')
-            units.append(f'''<div class="unit" id="{block_id}">
+            translated = f'<div class="{"summary-text" if summary_only else "translation"}">{translation}</div>' if zh else ""
+            insight = f'<div class="insight"><span class="eyebrow">释义</span><p class="markable" data-part="explain">{explanation}</p></div>' if explanation else ""
+            kind = "figure" if "image" in block else "text"
+            units.append(f'''<div class="unit" id="{block_id}" data-kind="{kind}">
   <article class="reading" aria-label="原文与译文">
     <div class="source-line"><span>{source_label}</span><a href="#{block_id}" title="打开本段链接">{pages}</a></div>
     {heading}{original}
-    <div class="{'summary-text' if summary_only else 'translation'}">{translation}</div>
+    {translated}
   </article>
   <aside class="annotation" aria-label="本段释义与笔记">
-    <div class="insight"><span class="eyebrow">释义</span><p class="markable" data-part="explain">{explanation}</p></div>
+    {insight}
     <details class="note" data-note="{block_id}">
       <summary>我的笔记<span class="note-state"></span></summary>
       <label class="visually-hidden" for="note-{block_id}">本段笔记</label>
@@ -110,7 +124,8 @@ def build(manuscript, template, source_pdf=None, appendix="summary", detailed_ap
 </div>''')
         if not units:
             raise ValueError(f"Empty section: {section_id}")
-        sections.append(f'''<section class="chapter" id="{section_id}">
+        appendix_flag = " data-appendix" if is_appendix else ""
+        sections.append(f'''<section class="chapter" id="{section_id}"{appendix_flag}>
 <div class="chapter-heading"><h2>{title}</h2><span>{escape(section.get("subtitle", ""))}</span></div>
 {"".join(units)}
 </section>''')
@@ -139,6 +154,7 @@ def build(manuscript, template, source_pdf=None, appendix="summary", detailed_ap
         "PDF_BUTTON": pdf_button,
         "MARKS_SCRIPT": (assets / "marks.js").read_text(encoding="utf-8"),
         "JUDGMENTS_SCRIPT": (assets / "judgments.js").read_text(encoding="utf-8"),
+        "SEARCH_SCRIPT": (assets / "search.js").read_text(encoding="utf-8"),
         "APPEARANCE_STYLE": (assets / "appearance.css").read_text(encoding="utf-8"),
     }
     return re.sub(r"@@([A-Z_]+)@@", lambda match: values[match[1]], template)
@@ -153,10 +169,16 @@ def main():
     parser.add_argument("--appendix-detail", action="append", default=[], metavar="SECTION_ID")
     args = parser.parse_args()
     template = Path(__file__).resolve().parents[1] / "assets" / "reader.html"
-    output = build(args.manuscript, template.read_text(encoding="utf-8"), args.source_pdf,
-                   args.appendix, args.appendix_detail)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(output, encoding="utf-8")
+    try:
+        output = build(args.manuscript, template.read_text(encoding="utf-8"), args.source_pdf,
+                       args.appendix, args.appendix_detail)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(output, encoding="utf-8")
+    except (OSError, ValueError, KeyError) as error:
+        parser.exit(2, f"{error}\n")
+    print("Built {} sections, {} reading blocks, {} figures ({:,} bytes).".format(
+        output.count('<section class="chapter"'), output.count('<div class="unit"'),
+        output.count('<figure>'), args.output.stat().st_size))
 
 
 if __name__ == "__main__":

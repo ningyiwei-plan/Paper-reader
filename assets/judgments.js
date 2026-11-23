@@ -30,6 +30,7 @@ function createReaderJudgments(storageKey, announce) {
   reportCount();
   const save = (message) => {
     reportCount();
+    document.dispatchEvent(new Event("reader-judgments-change"));
     try {
       localStorage.setItem(key, JSON.stringify(notes));
       announce(message);
@@ -127,6 +128,7 @@ function createReaderJudgments(storageKey, announce) {
   });
   return {
     newNote,
+    entries: () => notes,
     embed(copy) {
       copy.querySelector("#saved-judgments").textContent = JSON.stringify(notes).replaceAll("<", "\\u003c");
       const view = copy.querySelector("#judgments");
